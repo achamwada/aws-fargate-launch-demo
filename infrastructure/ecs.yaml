@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  SubnetID:
+    Type: String
+
+Resources:
+  MegaStudiosCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: megastudios-cluster
+  
+  MegaStudiosExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: megastudios-ecs-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  
+  MegaStudioLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: megastudio-nginx-app
+  
+  MegaStudiosContainerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: MegaStudiosContainerSecurityGroup
+      GroupDescription: allowing access to megastudios Fargate tasks
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  MegaStudiosTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: megastudios-taskdefinition
+      NetworkMode: awsvpc
+      Cpu: 256
+      Memory: 512
+      ExecutionRoleArn: !Ref MegaStudiosExecutionRole
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Name: megastudio-nginx-app
+          Image: nginx:latest
+          PortMappings:
+            - ContainerPort: 80
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref MegaStudioLogGroup
+              awslogs-stream-prefix: megastudios-logs
+
+  MegaStudiosService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: megastudios-service
+      Cluster: !Ref MegaStudiosCluster
+      LaunchType: FARGATE
+      DesiredCount: 1
+      TaskDefinition: !Ref MegaStudiosTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref SubnetID
+          SecurityGroups:
+            - !GetAtt MegaStudiosContainerSG.GroupId
