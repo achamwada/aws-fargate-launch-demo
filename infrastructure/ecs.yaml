@@ -1,6 +1,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Parameters:
-  SubnetID:
+  VpcId:
+    Type: String
+  Subnet1ID:
+    Type: String
+  Subnet2ID:
     Type: String
 
 Resources:
@@ -62,6 +66,7 @@ Resources:
 
   MegaStudiosService:
     Type: AWS::ECS::Service
+    DependsOn: MegaStudiosApplicationLoadBalancerListener
     Properties:
       ServiceName: megastudios-service
       Cluster: !Ref MegaStudiosCluster
@@ -72,6 +77,51 @@ Resources:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
           Subnets:
-            - !Ref SubnetID
+            - !Ref Subnet1ID
+            - !Ref Subnet2ID
           SecurityGroups:
             - !GetAtt MegaStudiosContainerSG.GroupId
+      LoadBalancers:
+        - TargetGroupArn: !Ref MegaStudiosTargetGroup
+          ContainerPort: 80
+          ContainerName: megastudio-nginx-app
+  
+  MegaStudiosALBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: MegaStudiosALBSG
+      GroupDescription: Allows access to ALB
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+  
+  MegaStudiosALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: MegaStudiosALB
+      Subnets:
+        - !Ref Subnet1ID
+        - !Ref Subnet2ID
+      SecurityGroups:
+        - !GetAtt MegaStudiosALBSG.GroupId
+
+  MegaStudiosApplicationLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref MegaStudiosALB
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MegaStudiosTargetGroup
+
+  MegaStudiosTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      Name: MegaStudiosTG
+      Protocol: HTTP
+      Port: 80
+      VpcId: !Ref VpcId
