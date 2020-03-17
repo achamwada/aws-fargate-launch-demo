@@ -16,20 +16,39 @@ Resources:
   MegaStudiosExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: megastudios-ecs-role
       AssumeRolePolicyDocument:
         Statement:
-          - Effect: Allow
-            Principal:
-              Service: ecs-tasks.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: AWSTrainingAmazonECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                # ECS Tasks to download images from ECR
+                - 'ecr:GetAuthorizationToken'
+                - 'ecr:BatchCheckLayerAvailability'
+                - 'ecr:GetDownloadUrlForLayer'
+                - 'ecr:BatchGetImage'
+                # ECS tasks to upload logs to CloudWatch
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+              Resource: '*'
   
   MegaStudioLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: megastudio-nginx-app
+  
+  MegaStudiosImageRepository:
+    Type: AWS::ECR::Repository
+    Description: Docker Application repo
+    Properties:
+      RepositoryName: megastudio-image-repository
   
   MegaStudiosContainerSG:
     Type: AWS::EC2::SecurityGroup
@@ -54,7 +73,7 @@ Resources:
         - FARGATE
       ContainerDefinitions:
         - Name: megastudio-nginx-app
-          Image: nginx:latest
+          Image: nginx:latest # 593446777029.dkr.ecr.eu-west-2.amazonaws.com/megastudio-image-repo:latest
           PortMappings:
             - ContainerPort: 80
           LogConfiguration:
@@ -68,7 +87,7 @@ Resources:
     Type: AWS::ECS::Service
     DependsOn: MegaStudiosApplicationLoadBalancerListener
     Properties:
-      ServiceName: megastudios-service
+      ServiceName: megastudios-service-app
       Cluster: !Ref MegaStudiosCluster
       LaunchType: FARGATE
       DesiredCount: 1
@@ -121,7 +140,7 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       TargetType: ip
-      Name: MegaStudiosTG
+      Name: MegaStudioTG
       Protocol: HTTP
       Port: 80
       VpcId: !Ref VpcId
